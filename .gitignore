@@ -23,3 +23,6 @@ docs/Prompts
 *.njsproj
 *.sln
 *.sw?
+
+graphify-out
+.claude
