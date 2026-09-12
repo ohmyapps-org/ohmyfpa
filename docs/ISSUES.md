@@ -52,6 +52,14 @@ After importing a large document, every function lands as Borrador or Revisar an
 
 Acceptance: import 40 requirements and classify all of them without leaving the queue; the queue tracks progress and can be resumed.
 
+## open — Reconstruct tables from PDF
+
+`area:import` `priority:medium`
+
+Markdown, DOCX and XLSX requirement tables are read as tables. PDF is not: `pdfjs-dist` returns positioned text runs, not cells, so a PDF ERS falls back to the prose reader and loses the ID, acceptance criterion and module columns.
+
+Acceptance: a PDF whose requirements live in a table imports with the same IDs, issues and descriptions as the DOCX of the same document, by clustering text items on their x positions per page.
+
 ## open — Duplicate and near-duplicate detection on import
 
 `area:import` `priority:medium`

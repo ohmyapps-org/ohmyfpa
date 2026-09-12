@@ -14,16 +14,22 @@ All parsing runs in the browser. Nothing is uploaded.
 
 | Format | Behaviour |
 | --- | --- |
-| DOCX | Text is extracted with `mammoth` and read as IEEE 830 requirement lines. |
-| PDF | Text is extracted per page with `pdfjs-dist`, then read as requirement lines. |
+| DOCX | Converted to HTML with `mammoth` so headings and tables survive, then read as an IEEE 830 document. |
+| PDF | Text is extracted per page with `pdfjs-dist`, then read as an IEEE 830 document. Table geometry is not reconstructed, so a requirement table in a PDF falls back to the prose reader. |
 | XLSX / XLS | Every sheet is read as a table; the sheet name becomes the issue when the row has none. |
 | CSV / TSV | Delimiter is sniffed (`,` `;` tab `\|`), quoted cells are supported. |
 | JSON | An array, or an object with `functions`, `issues`, `cards` or `items`. GitHub and Trello shapes are detected and their labels, lists, milestones and URLs are flattened. |
-| MD / TXT | Requirement lines, same as DOCX and PDF. |
+| MD / TXT | Read as an IEEE 830 document, same as DOCX and PDF. |
 
 Recognised column names include `id`, `title`/`titulo`/`nombre`, `description`/`descripcion`, `type`/`tipo`, `issue`/`modulo`/`labels`/`list`, `complexity`/`complejidad`, `det`, `ret`, `ftr` and `url`/`html_url`/`shortUrl`.
 
-Requirement lines are recognised when they start with a bullet, a number, `RF-`, `RN-` or `REQ`, or when they read like `El sistema deberá …`. Prefixes are stripped from the title.
+## How an IEEE 830 document is read
+
+Requirement tables come first. A Markdown table counts as a requirement inventory only when its header row has both an identifier column (`id`, `código`, `clave`, `ref`) and a description column (`descripción`, `requisito`, `detalle`, `nombre`). That rejects the front matter, glossary, role and module tables that surround them. The nearest preceding heading becomes the issue, with its numbering stripped, so `#### 3.2.1. Control de acceso y autenticación (AUTH)` groups its rows under `Control de acceso y autenticación (AUTH)`. A `Criterio de aceptación` or `Métrica o restricción` column is folded into the description, and when the row carries no title the description supplies a shortened one.
+
+Rows whose identifier starts with `RNF`, `NFR` or `RN` are skipped: non-functional requirements are constraints, not function points. The import notes report how many were left out.
+
+When a document has no requirement table, the prose reader takes over. It reads bulleted or numbered lines and sentences shaped like `El sistema deberá …`, stripping the prefix from the title. It drops headings, table rows, anything under an `Índice` heading, and any line whose text repeats one of the document's own headings — that last rule is what keeps a table of contents out of the inventory.
 
 ## Function types
 

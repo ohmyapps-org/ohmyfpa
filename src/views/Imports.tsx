@@ -125,9 +125,13 @@ export function Imports({
             </div>
 
             {lastNotes.length ? (
-              <div className="note">
+              <div className="note note--list">
                 <Info size={14} />
-                <span>{lastNotes.join(' · ')}</span>
+                <ul>
+                  {lastNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </section>

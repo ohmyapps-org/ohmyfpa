@@ -45,16 +45,55 @@ function normalizeComplexity(raw: string): Complexity | null {
   return null
 }
 
-/** Normaliza un registro arbitrario (issue, card, fila de planilla) a una función FPA. */
+/** Saca énfasis Markdown y espacios repetidos de una celda o línea. */
+function cleanText(raw: string): string {
+  return raw
+    .replace(/\*\*|__|`|~~/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Recorta un texto largo a un título legible sin partir palabras. */
+export function shortTitle(text: string, max = 96): string {
+  const clean = cleanText(text)
+  if (clean.length <= max) return clean
+  const cut = clean.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trim()}…`
+}
+
+/** Normaliza un texto para comparar títulos contra entradas del índice. */
+function comparisonKey(text: string): string {
+  return cleanText(text)
+    .toLocaleLowerCase()
+    .replace(/^\d+(?:\.\d+)*[.)]?\s*/, '')
+    .replace(/[^0-9a-záéíóúüñ ]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Normaliza un registro arbitrario (issue, card, fila de tabla) a una función FPA. */
 export function toFunction(
   record: Record<string, unknown>,
   index: number,
   origin: OriginKind,
   matrix: PointMatrix = DEFAULT_MATRIX,
 ): FpaFunction {
-  const title = pick(record, ['title', 'titulo', 'name', 'nombre', 'summary', 'función', 'funcion', 'requisito']) ||
-    `Función importada ${index + 1}`
-  const description = pick(record, ['description', 'descripcion', 'descripción', 'body', 'desc', 'detalle'])
+  const namedTitle = pick(record, ['title', 'titulo', 'título', 'name', 'nombre', 'summary', 'función', 'funcion'])
+  const longText = pick(record, ['description', 'descripcion', 'descripción', 'requisito', 'body', 'desc', 'detalle'])
+  const acceptance = pick(record, [
+    'criterio de aceptación',
+    'criterio de aceptacion',
+    'criterio',
+    'acceptance',
+    'acceptance criteria',
+    'métrica o restricción',
+    'metrica o restriccion',
+  ])
+  // Una tabla de requisitos suele traer sólo ID y descripción: el título sale de ahí.
+  const title = namedTitle || shortTitle(longText) || `Función importada ${index + 1}`
+  const body = namedTitle ? longText : longText === title ? '' : longText
+  const description = [body, acceptance ? `Criterio de aceptación: ${acceptance}` : ''].filter(Boolean).join('\n\n')
   const rawType = pick(record, ['type', 'tipo', 'fpatype', 'fpa_type']).toUpperCase()
   const guess = inferType(`${title} ${description}`)
   const type: FunctionType = ['EI', 'EO', 'EQ', 'ILF', 'EIF'].includes(rawType) ? (rawType as FunctionType) : guess.type
@@ -82,42 +121,170 @@ export function toFunction(
   }
 }
 
-const REQUIREMENT_LINE =
-  /^(?:\s*(?:[-*•]|\d+(?:\.\d+)*[.)]?|R[FN]\s*-?\s*\d+|REQ\s*-?\s*\d+)\s*)?(.{12,240})$/i
+const HEADING_LINE = /^(#{1,6})\s+(.*\S)\s*$/
+const TABLE_LINE = /^\s*\|(.+)\|\s*$/
+const TABLE_RULE = /^\s*\|[\s:|-]+\|\s*$/
+const INDEX_HEADING = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(?:[íi]ndice|tabla de contenidos?|contents|table of contents)\b/i
+/** Los requisitos no funcionales no cuentan puntos de función. */
+const NON_FUNCTIONAL_ID = /^(?:rnf|nfr|rn)(?:\b|[-_ ])/i
+const ID_HEADER = /^(?:id|ids|identificador|c[óo]digo|codigo|clave|key|ref|referencia|n[°ºo])$/
+const DESCRIPTION_HEADER =
+  /^(?:descripci[óo]n|description|detalle|requisito|requerimiento|funci[óo]n|funcion|funcionalidad|nombre|t[íi]tulo|titulo|summary|resumen|enunciado)$/
 
-/** Extrae requisitos candidatos de texto plano estilo IEEE 830. */
-export function parseRequirementText(content: string, origin: OriginKind, matrix: PointMatrix): FpaFunction[] {
-  const lines = content
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 12 && line.length < 260)
-    .filter((line) => /[a-záéíóúñ]/i.test(line))
-    .filter((line) => !/^(p[áa]gina|page|tabla de contenido|[íi]ndice|contents)\b/i.test(line))
+export type TableBlock = { section: string; headers: string[]; rows: Record<string, string>[] }
 
-  const candidates = lines.filter(
-    (line) => /^(?:[-*•]|\d+[.)]|R[FN]\s*-?\s*\d+|REQ)/i.test(line) || /\b(el sistema|la aplicaci[óo]n|el usuario)\b.*\b(deber[áa]|podr[áa]|permitir[áa]|debe|permite)\b/i.test(line),
-  )
-  const source = candidates.length >= 3 ? candidates : lines
+function splitTableRow(line: string): string[] {
+  const match = TABLE_LINE.exec(line)
+  if (!match) return []
+  return match[1].split('|').map(cleanText)
+}
+
+/** Quita la numeración de un encabezado: "3.2.1. Control de acceso (AUTH)" -> "Control de acceso (AUTH)". */
+function sectionLabel(raw: string): string {
+  return cleanText(raw)
+    .replace(/^\d+(?:\.\d+)*[.)]?\s*/, '')
+    .trim()
+}
+
+/** Lee las tablas Markdown de un documento y las asocia al encabezado que las precede. */
+export function extractTables(content: string): TableBlock[] {
+  const lines = content.split(/\r?\n/)
+  const tables: TableBlock[] = []
+  let section = ''
+  let index = 0
+  while (index < lines.length) {
+    const heading = HEADING_LINE.exec(lines[index])
+    if (heading) {
+      section = sectionLabel(heading[2])
+      index += 1
+      continue
+    }
+    if (!TABLE_LINE.test(lines[index]) || TABLE_RULE.test(lines[index])) {
+      index += 1
+      continue
+    }
+    const headers = splitTableRow(lines[index]).map((header) => header.toLocaleLowerCase())
+    let cursor = index + 1
+    if (cursor < lines.length && TABLE_RULE.test(lines[cursor])) cursor += 1
+    const rows: Record<string, string>[] = []
+    while (cursor < lines.length && TABLE_LINE.test(lines[cursor])) {
+      if (!TABLE_RULE.test(lines[cursor])) {
+        const cells = splitTableRow(lines[cursor])
+        if (cells.some(Boolean)) rows.push(Object.fromEntries(headers.map((header, cell) => [header, cells[cell] ?? ''])))
+      }
+      cursor += 1
+    }
+    if (headers.length >= 2 && rows.length) tables.push({ section, headers, rows })
+    index = cursor
+  }
+  return tables
+}
+
+/** Una tabla es inventario de requisitos sólo si tiene columna de ID y columna de descripción. */
+export function isRequirementTable(headers: string[]): boolean {
+  return headers.some((header) => ID_HEADER.test(header)) && headers.some((header) => DESCRIPTION_HEADER.test(header))
+}
+
+/** "RF-AUTH-001" -> "AUTH", para agrupar por módulo cuando no hay encabezado. */
+function moduleOf(id: string): string {
+  return /^[a-z]{1,4}[-_]([a-z]{2,8})[-_]\d+/i.exec(id)?.[1]?.toLocaleUpperCase() ?? ''
+}
+
+function functionsFromTables(
+  tables: TableBlock[],
+  origin: OriginKind,
+  matrix: PointMatrix,
+): { functions: FpaFunction[]; notes: string[] } {
+  const functions: FpaFunction[] = []
+  const notes: string[] = []
+  let skipped = 0
+  for (const table of tables) {
+    if (!isRequirementTable(table.headers)) continue
+    const idColumn = table.headers.find((header) => ID_HEADER.test(header)) ?? 'id'
+    const taken: FpaFunction[] = []
+    for (const row of table.rows) {
+      const id = row[idColumn] ?? ''
+      if (NON_FUNCTIONAL_ID.test(id)) {
+        skipped += 1
+        continue
+      }
+      const record: Record<string, unknown> = { ...row, id }
+      if (!record.issue) record.issue = table.section || moduleOf(id) || 'Requisitos importados'
+      taken.push(toFunction(record, functions.length + taken.length, origin, matrix))
+    }
+    if (!taken.length) continue
+    functions.push(...taken)
+    notes.push(`${table.section || 'Tabla'}: ${taken.length} ${taken.length === 1 ? 'requisito' : 'requisitos'}`)
+  }
+  if (skipped) {
+    const label = skipped === 1 ? 'requisito no funcional omitido' : 'requisitos no funcionales omitidos'
+    notes.push(`${skipped} ${label}: no cuentan puntos de función`)
+  }
+  return { functions, notes }
+}
+
+/** Conjunto de encabezados del documento, para descartar las entradas del índice. */
+function headingKeys(content: string): Set<string> {
+  const keys = new Set<string>()
+  for (const line of content.split(/\r?\n/)) {
+    const heading = HEADING_LINE.exec(line)
+    if (heading) keys.add(comparisonKey(heading[2]))
+  }
+  keys.delete('')
+  return keys
+}
+
+const BULLET_PREFIX = /^(?:[-*•]|\d+(?:\.\d+)*[.)]|R[FN]\s*-?\s*\d+[.)]?|REQ\s*-?\s*\d+[.)]?)\s+/i
+
+/** Camino de respaldo: documentos sin tablas, donde cada requisito es una línea de prosa. */
+function functionsFromProse(content: string, origin: OriginKind, matrix: PointMatrix): FpaFunction[] {
+  const headings = headingKeys(content)
+  const bullets: string[] = []
+  const prose: string[] = []
+  let insideIndex = false
+  for (const original of content.split(/\r?\n/)) {
+    const heading = HEADING_LINE.exec(original)
+    if (heading) {
+      insideIndex = INDEX_HEADING.test(cleanText(heading[2]))
+      continue
+    }
+    if (insideIndex) continue
+    if (TABLE_LINE.test(original)) continue
+    const line = cleanText(original)
+    if (line.length < 13 || line.length > 260) continue
+    if (!/[a-záéíóúñ]/i.test(line)) continue
+    if (/^(?:p[áa]gina|page)\b/i.test(line)) continue
+    const marked = BULLET_PREFIX.test(line)
+    const body = line.replace(BULLET_PREFIX, '').trim()
+    if (body.length < 13) continue
+    // Una línea que repite un encabezado del documento es una entrada del índice, no un requisito.
+    if (headings.has(comparisonKey(body))) continue
+    if (marked) bullets.push(body)
+    else if (
+      /\b(el sistema|la aplicaci[óo]n|el usuario|the system)\b/i.test(body) &&
+      /\b(deber[áa]|podr[áa]|permit|debe|puede)/i.test(body)
+    ) {
+      prose.push(body)
+    }
+  }
+
+  const source = bullets.length + prose.length >= 3 ? [...bullets, ...prose] : bullets.length ? bullets : prose
   const seen = new Set<string>()
-
   return source
-    .slice(0, 120)
-    .map((line) => {
-      const match = REQUIREMENT_LINE.exec(line)
-      return (match?.[1] ?? line).trim()
-    })
-    .filter((title) => {
-      const key = title.toLocaleLowerCase()
+    .filter((line) => {
+      const key = comparisonKey(line)
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
-    .map((title, index) => {
-      const guess = inferType(title)
+    .slice(0, 200)
+    .map((text, index) => {
+      const guess = inferType(text)
+      const title = shortTitle(text)
       return {
         id: `REQ-${String(index + 1).padStart(3, '0')}`,
-        title: title.length > 96 ? `${title.slice(0, 93)}…` : title,
-        description: title.length > 96 ? title : '',
+        title,
+        description: title === text ? '' : text,
         type: guess.type,
         issue: 'Requisitos importados',
         complexity: 'Media' as Complexity,
@@ -131,6 +298,27 @@ export function parseRequirementText(content: string, origin: OriginKind, matrix
         status: 'Borrador' as const,
       }
     })
+}
+
+/** Lee un documento IEEE 830: primero sus tablas de requisitos, y si no hay, su prosa. */
+export function parseRequirementDocument(
+  content: string,
+  origin: OriginKind,
+  matrix: PointMatrix,
+): { functions: FpaFunction[]; notes: string[] } {
+  const fromTables = functionsFromTables(extractTables(content), origin, matrix)
+  if (fromTables.functions.length) return fromTables
+  const functions = functionsFromProse(content, origin, matrix)
+  const notes = fromTables.notes.slice()
+  if (functions.length) {
+    const label = functions.length === 1 ? 'requisito leído' : 'requisitos leídos'
+    notes.push(`${functions.length} ${label} del texto, sin tablas de requisitos`)
+  }
+  return { functions, notes }
+}
+
+export function parseRequirementText(content: string, origin: OriginKind, matrix: PointMatrix): FpaFunction[] {
+  return parseRequirementDocument(content, origin, matrix).functions
 }
 
 function detectDelimiter(header: string): string {
@@ -233,14 +421,49 @@ async function parseXlsx(file: File, matrix: PointMatrix): Promise<ImportResult>
   return { functions, origin: 'XLSX', notes }
 }
 
+/** Convierte el HTML de mammoth al mismo Markdown estructurado que lee el parser de tablas. */
+export function htmlToStructuredText(html: string): string {
+  if (typeof DOMParser === 'undefined') return cleanText(html.replace(/<[^>]+>/g, ' '))
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+  const out: string[] = []
+  const visit = (element: Element) => {
+    const tag = element.tagName.toLocaleLowerCase()
+    const heading = /^h([1-6])$/.exec(tag)
+    if (heading) {
+      out.push(`${'#'.repeat(Number(heading[1]))} ${cleanText(element.textContent ?? '')}`)
+      return
+    }
+    if (tag === 'table') {
+      const rows = Array.from(element.querySelectorAll('tr'))
+      rows.forEach((row, index) => {
+        const cells = Array.from(row.children).map((cell) => cleanText(cell.textContent ?? '').replace(/\|/g, '/'))
+        out.push(`| ${cells.join(' | ')} |`)
+        if (index === 0) out.push(`|${cells.map(() => ' --- ').join('|')}|`)
+      })
+      out.push('')
+      return
+    }
+    if (element.children.length && /^(?:div|section|article|main|ul|ol)$/.test(tag)) {
+      for (const child of Array.from(element.children)) visit(child)
+      return
+    }
+    const text = cleanText(element.textContent ?? '')
+    if (text) out.push(tag === 'li' ? `- ${text}` : text)
+  }
+  for (const child of Array.from(parsed.body.children)) visit(child)
+  return out.join('\n')
+}
+
 async function parseDocx(file: File, matrix: PointMatrix): Promise<ImportResult> {
   const mammoth = await import('mammoth/mammoth.browser.js')
   const api = (mammoth as unknown as { default?: typeof mammoth }).default ?? mammoth
-  const result = await api.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+  // convertToHtml conserva encabezados y tablas; extractRawText las aplana y pierde los requisitos.
+  const result = await api.convertToHtml({ arrayBuffer: await file.arrayBuffer() })
+  const document = parseRequirementDocument(htmlToStructuredText(result.value), 'DOCX', matrix)
   return {
-    functions: parseRequirementText(result.value, 'DOCX', matrix),
+    functions: document.functions,
     origin: 'DOCX',
-    notes: result.messages.slice(0, 3).map((message: { message: string }) => message.message),
+    notes: [...document.notes, ...result.messages.slice(0, 2).map((message: { message: string }) => message.message)],
   }
 }
 
@@ -259,7 +482,8 @@ async function parsePdf(file: File, matrix: PointMatrix): Promise<ImportResult> 
   }
   const notes = [`${doc.numPages} páginas leídas en el navegador`]
   await task.destroy()
-  return { functions: parseRequirementText(pages.join('\n'), 'PDF', matrix), origin: 'PDF', notes }
+  const document = parseRequirementDocument(pages.join('\n'), 'PDF', matrix)
+  return { functions: document.functions, origin: 'PDF', notes: [...notes, ...document.notes] }
 }
 
 /** Punto de entrada único: decide el parser por extensión. Todo corre en el dispositivo. */
@@ -273,5 +497,6 @@ export async function parseFile(file: File, matrix: PointMatrix): Promise<Import
     return { functions: parseCsv(await readText(file), origin, matrix), origin, notes: [] }
   }
   if (name.endsWith('.json')) return parseJson(await readText(file), file.name, matrix)
-  return { functions: parseRequirementText(await readText(file), 'IEEE830', matrix), origin: 'IEEE830', notes: [] }
+  const document = parseRequirementDocument(await readText(file), 'IEEE830', matrix)
+  return { functions: document.functions, origin: 'IEEE830', notes: document.notes }
 }

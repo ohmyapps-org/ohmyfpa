@@ -756,6 +756,30 @@
   margin-top: 0.125rem;
 }
 
+.note--list ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.note--list li::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--ink-faint);
+}
+
+.note--list li:first-child {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.note--list li:first-child::before {
+  content: none;
+}
+
 .code-block {
   margin: 0;
   padding: var(--gap-3);

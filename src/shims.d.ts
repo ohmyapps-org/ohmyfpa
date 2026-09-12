@@ -15,8 +15,7 @@ declare module 'pdfjs-dist/build/pdf.worker.mjs?url' {
 }
 
 declare module 'mammoth/mammoth.browser.js' {
-  export function extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<{
-    value: string
-    messages: { message: string }[]
-  }>
+  type MammothResult = { value: string; messages: { message: string }[] }
+  export function extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<MammothResult>
+  export function convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<MammothResult>
 }
