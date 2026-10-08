@@ -1,0 +1,170 @@
+/* Paleta y escalas. Todo el tema vive acá: los componentes solo consumen variables. */
+
+:root {
+  --ui-scale: 1;
+
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --font-display: 'DM Serif Display', Georgia, serif;
+
+  --type-ei: #2f6fd0;
+  --type-eo: #128f86;
+  --type-eq: #6a5ae0;
+  --type-ilf: #b86a12;
+  --type-eif: #c04574;
+
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+
+  --gap-1: 0.25rem;
+  --gap-2: 0.5rem;
+  --gap-3: 0.75rem;
+  --gap-4: 1rem;
+  --gap-5: 1.5rem;
+  --gap-6: 2rem;
+
+  --rail: 268px;
+  --shell-pad: 0.75rem;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --speed-fast: 140ms;
+  --speed: 240ms;
+  --speed-slow: 420ms;
+}
+
+/* --- Tema claro (por defecto) --- */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --canvas: #d7eef8;
+  --canvas-glow-a: rgba(255, 255, 255, 0.9);
+  --canvas-glow-b: rgba(73, 136, 196, 0.22);
+
+  --ink: #0f2854;
+  --ink-soft: rgba(15, 40, 84, 0.66);
+  --ink-faint: rgba(15, 40, 84, 0.44);
+
+  --accent: #1c4d8d;
+  --accent-soft: #4988c4;
+  --accent-wash: rgba(28, 77, 141, 0.1);
+  --accent-contrast: #f3fbff;
+
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --surface-sunk: rgba(15, 40, 84, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.96);
+
+  --line: rgba(15, 40, 84, 0.14);
+  --line-strong: rgba(15, 40, 84, 0.26);
+
+  --ok: #1c7a56;
+  --warn: #a9651a;
+  --danger: #b23a48;
+
+  --shadow-sm: 0 6px 18px rgba(15, 40, 84, 0.08);
+  --shadow-md: 0 14px 34px rgba(15, 40, 84, 0.12);
+  --shadow-lg: 0 26px 64px rgba(15, 40, 84, 0.18);
+
+  --blur: saturate(140%) blur(18px);
+}
+
+/* --- Tema oscuro --- */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: #060e1c;
+  --canvas-glow-a: rgba(73, 136, 196, 0.22);
+  --canvas-glow-b: rgba(11, 24, 46, 0.9);
+
+  --ink: #dceaf9;
+  --ink-soft: rgba(220, 234, 249, 0.68);
+  --ink-faint: rgba(220, 234, 249, 0.42);
+
+  --accent: #7ab6ea;
+  --accent-soft: #4988c4;
+  --accent-wash: rgba(122, 182, 234, 0.14);
+  --accent-contrast: #06121f;
+
+  --surface: rgba(17, 32, 55, 0.72);
+  --surface-strong: rgba(20, 37, 63, 0.92);
+  --surface-sunk: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(28, 49, 80, 0.9);
+
+  --line: rgba(150, 189, 227, 0.16);
+  --line-strong: rgba(150, 189, 227, 0.3);
+
+  --ok: #56c79a;
+  --warn: #e0a44e;
+  --danger: #ef7a86;
+
+  --type-ei: #6fa8ff;
+  --type-eo: #3fd2c2;
+  --type-eq: #a294ff;
+  --type-ilf: #ecac4f;
+  --type-eif: #f2799f;
+
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 16px 38px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 30px 70px rgba(0, 0, 0, 0.6);
+
+  --blur: saturate(150%) blur(20px);
+}
+
+/* --- Alto contraste: sube opacidades y elimina translucidez --- */
+[data-contrast='high'] {
+  --surface: var(--accent-contrast);
+  --surface-strong: var(--accent-contrast);
+  --surface-hover: var(--accent-wash);
+  --ink-soft: var(--ink);
+  --ink-faint: var(--ink);
+  --line: var(--ink);
+  --line-strong: var(--ink);
+  --blur: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+[data-contrast='high'] .panel,
+[data-contrast='high'] .sidebar,
+[data-contrast='high'] .sectionbar {
+  border-width: 2px;
+}
+
+/* --- Tipografía alternativa --- */
+[data-typeface='system'] {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+[data-typeface='readable'] {
+  --font-sans: 'Atkinson Hyperlegible', Verdana, Tahoma, system-ui, sans-serif;
+  --font-display: 'Atkinson Hyperlegible', Verdana, Tahoma, system-ui, sans-serif;
+  --font-mono: 'DM Mono', Consolas, monospace;
+  letter-spacing: 0.01em;
+}
+
+/* --- Movimiento reducido --- */
+[data-motion='reduced'] *,
+[data-motion='reduced'] *::before,
+[data-motion='reduced'] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

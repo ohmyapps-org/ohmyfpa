@@ -2,42 +2,55 @@
 
 ## Purpose
 
-OhMyFPA is a local-first workspace for Function Point Analysis. It transforms requirements into a reviewable inventory of EI, EO, EQ, ILF, and EIF functions, calculates points and converts the estimate into effort based on team size.
+OhMyFPA is a local-first workspace for Function Point Analysis. It transforms requirements into a reviewable inventory of EI, EO, EQ, ILF and EIF functions, adjusts the count with the 14 IFPUG general system characteristics, and converts the adjusted total into duration and cost.
 
 ## Runtime
 
-- Frontend: React 19, TypeScript strict mode, Vite and CSS.
+- Frontend: React 19, TypeScript strict mode, Vite and plain CSS with design tokens.
 - Runtime: Bun.
-- Persistence: browser localStorage for the working analysis.
-- AI boundary: an optional stdio MCP server that runs in the same machine.
+- Persistence: browser localStorage, one entry per workspace.
+- AI boundary: an optional stdio MCP server that runs on the same machine.
 - Iconography: lucide-react.
-- Network: no browser requests are required for the core flow.
+- Network: no browser requests are required for any part of the flow.
 
-## Main modules
+## Source layout
 
-| Module | Responsibility |
+| Path | Responsibility |
 | --- | --- |
-| Overview | Shows the visual function map, volume by type, traceability and effort. |
-| Functions | Filters the inventory and removes local records. |
-| Imports | Reads local GitHub, Trello and IEEE830 exports. |
-| Values FPA | Stores hours per point, workday length, cost reference and profile label. |
-| MCP Server | Documents and exposes local tools for AI-assisted handling. |
-| Documents | Links the local operating documentation. |
+| `src/lib/types.ts` | Shared domain types. |
+| `src/lib/fpa.ts` | Point matrix, IFPUG complexity tables, the 14 influence factors, VAF and the estimation formula. Single source of truth, also imported by the MCP server. |
+| `src/lib/import.ts` | Format dispatch and parsers. Heavy parsers (`pdfjs-dist`, `mammoth`, `xlsx`) are dynamic imports, so they are code-split and only fetched when a matching file is opened. |
+| `src/lib/storage.ts` | Schema defaults, v1 → v2 migration, load and save. |
+| `src/styles/*.css` | `tokens` (palette, themes, accessibility), `base` (reset), `layout` (shell, sidebar, section bar), `components`, `views`. |
+| `src/components/*` | Sidebar, section bar, charts, function modal and UI primitives. |
+| `src/views/*` | One file per workspace view. |
+
+## Modules in the product
+
+| View | Responsibility |
+| --- | --- |
+| Resumen | Switchable chart (radar, ternary, bars, donut), key metrics and the eight-step pipeline as navigation. |
+| Funciones | Filters the inventory and opens the detail modal for each function. |
+| Importaciones | Reads local DOCX, PDF, XLSX, CSV, JSON, Markdown and TXT; documents connector expectations. |
+| Influencia | Scores the 14 general system characteristics and shows TDI, VAF and AFP live. |
+| Valores FPA | Hours per point, workday length, developers, rate, currency and the editable point matrix. |
+| Estimación | Duration and cost, including other costs with recurring proration. |
+| Configuración | Project data, theme, accessibility, agent connection and data portability. |
+| MCP Server | Visible only in dev and self-host builds; documents the local tools. |
 
 ## Data flow
 
-1. A user creates a function or selects a local JSON, CSV, Markdown or TXT file.
-2. The browser parser normalizes the record, preserves its origin and infers a candidate type from the title.
-3. The user reviews the suggested type, complexity, DET, RET and confidence.
-4. The function is stored in browser localStorage under ohmyfpa-analysis-v1.
-5. The summary derives function points, hours and team days from the current values.
-6. Export creates a JSON file that can be moved to another offline workspace.
-7. The MCP server can read a local analysis file when OHMYFPA_DATA is configured.
+1. A user creates a function or selects local files.
+2. `parseFile` dispatches by extension, normalizes each record, preserves its origin and source URL, and infers a candidate type from the text.
+3. `deriveComplexity` applies the IFPUG DET × RET / FTR table for the function type and reports which bands matched, so the number stays auditable.
+4. Functions are stored per project in localStorage under `ohmyfpa-analysis-v2`.
+5. `estimate` derives UFP, TDI, VAF, AFP, hours, duration and cost in one pass; every view reads from that single result.
+6. Export creates a JSON file that can be restored in another offline workspace or handed to the MCP server through `OHMYFPA_DATA`.
 
-## Design language
+## Theming and accessibility
 
-The interface follows the OhMy family direction: compact panels, dark canvas, petroleum blue accents, thin technical borders and diagram-like spatial relationships. The center map is deliberately a visual index of the five FPA function types.
+Every colour, radius and duration is a CSS custom property in `tokens.css`. Theme, contrast, typeface and motion are `data-*` attributes on `<html>`; UI scale is a `--ui-scale` multiplier on the root font size, and all sizing is authored in `rem`, so one variable rescales the whole interface.
 
 ## Scope boundary
 
-Actual live GitHub, Trello or IFPUG network synchronization is outside the offline build. The supported path is export locally, import locally, review locally. This keeps the Zero Data Policy enforceable.
+Live GitHub, Trello or IFPUG network synchronization is outside the offline build. The supported path is export locally, import locally, review locally. That is what keeps the Zero Data Policy enforceable.
