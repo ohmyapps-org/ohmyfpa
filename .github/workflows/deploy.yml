@@ -1,0 +1,19 @@
+name: Deploy points.ohmy.lat
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-points-ohmy-lat
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64]
+    environment: production
+
+    steps:
+      - name: Deploy (pull main, build, rsync a /var/www/points.ohmy.lat)
+        run: /home/hermes/deploy/ohmyfpa.sh
